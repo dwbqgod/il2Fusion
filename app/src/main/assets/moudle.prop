@@ -1,0 +1,6 @@
+name=Text Extract Tool Module
+version=1
+versionCode=1
+author=PenguinAndy
+description=文本提取工具
+minApi=21
