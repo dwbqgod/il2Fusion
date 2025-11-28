@@ -13,8 +13,8 @@
 
 #define LINE_MAX 2048
 
-static bool memory_region_comparator(MemRange a, MemRange b) {
-  return (a.start < b.start);
+static bool memory_region_comparator(const MemRange &a, const MemRange &b) {
+  return (a.start() < b.start());
 }
 
 stl::vector<MemRegion> regions;
@@ -156,7 +156,7 @@ static stl::vector<RuntimeModule> &get_process_map_with_proc_maps() {
     char *path_buffer = line_buffer + path_index;
     if (*path_buffer == 0 || *path_buffer == '\n' || *path_buffer == '[')
       continue;
-    RuntimeModule module;
+    RuntimeModule module{};
 
     // strip
     if (path_buffer[strlen(path_buffer) - 1] == '\n') {

@@ -5,6 +5,7 @@
 
 struct RuntimeModule {
   void *base;
+  void *load_address;
   char path[1024];
 };
 
