@@ -1,12 +1,14 @@
 package com.tools.module
 
 import android.content.Context
-import com.tools.textextracttool.BuildConfig
 import com.tools.textextracttool.config.HookConfigStore
 import de.robv.android.xposed.IXposedHookLoadPackage
+import de.robv.android.xposed.IXposedHookZygoteInit
 import de.robv.android.xposed.XC_MethodHook
+import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
+import de.robv.android.xposed.callbacks.XC_InitPackageResources
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
 /**
@@ -21,11 +23,12 @@ class MainHook: IXposedHookLoadPackage {
     private companion object {
         const val TAG = "[TextExtractTool]"
         const val NATIVE_LIB = "native_hook"
+        const val MODULE_PKG = "com.tools.textextracttool"
     }
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         // ignore self
-        if (lpparam.packageName == BuildConfig.APPLICATION_ID) return
+        if (lpparam.packageName == MODULE_PKG) return
 
         XposedBridge.log("$TAG Inject to: ${lpparam.packageName}")
 
@@ -75,15 +78,15 @@ class MainHook: IXposedHookLoadPackage {
 
                     // 下发当前配置的 RVA 列表
                     try {
-                        val rvas = HookConfigStore.loadRvas(ctx).toLongArray()
-                        NativeBridge.updateHookTargets(rvas)
-                        XposedBridge.log("$TAG updateHookTargets -> ${rvas.joinToString()}")
-                        // 如果当前剪贴板为空，延迟重试几次，避免主进程早于剪贴板准备完成
+                        val rvas = HookConfigStore.loadRvasForHook(ctx).toLongArray()
+                        NativeBridge.setConfig(rvas)
+                        XposedBridge.log("$TAG setConfig -> ${rvas.joinToString()}")
+                        // 如果当前列表为空，延迟重试几次，避免主进程早于配置写入完成
                         if (rvas.isEmpty()) {
                             retryLoadRvas(ctx, 3, 500L)
                         }
                     } catch (e: Throwable) {
-                        XposedBridge.log("$TAG updateHookTargets failed: $e")
+                        XposedBridge.log("$TAG setConfig failed: $e")
                     }
 
                 }
@@ -97,10 +100,10 @@ class MainHook: IXposedHookLoadPackage {
             repeat(times) { idx ->
                 try {
                     Thread.sleep(delayMs)
-                    val rvas = HookConfigStore.loadRvas(ctx).toLongArray()
+                    val rvas = HookConfigStore.loadRvasForHook(ctx).toLongArray()
                     if (rvas.isNotEmpty()) {
-                        NativeBridge.updateHookTargets(rvas)
-                        XposedBridge.log("$TAG retry#$idx updateHookTargets -> ${rvas.joinToString()}")
+                        NativeBridge.setConfig(rvas)
+                        XposedBridge.log("$TAG retry#$idx setConfig -> ${rvas.joinToString()}")
                         return@Thread
                     }
                 } catch (t: Throwable) {

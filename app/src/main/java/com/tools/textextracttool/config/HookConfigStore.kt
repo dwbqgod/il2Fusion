@@ -1,33 +1,31 @@
 package com.tools.textextracttool.config
 
 import android.content.Context
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.util.Log
+import android.content.ContentValues
+import com.tools.textextracttool.config.ConfigContentProvider.Companion.CONTENT_URI
+import com.tools.textextracttool.config.ConfigContentProvider.Companion.KEY_RVAS
 
 object HookConfigStore {
     private const val TAG = "[TextExtractTool]"
-
     fun saveRvas(ctx: Context, rvas: List<Long>) {
+        val storeCtx = ctx.applicationContext ?: ctx
         val text = rvas.joinToString(separator = ",")
-        Log.i(TAG, "saveRvas(): stored ${rvas.size} items -> $text")
-
-        // 仅依赖剪贴板做跨进程同步，避免 SharedPreferences 权限问题
-        try {
-            val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("TextExtractTool RVA", text))
-            Log.i(TAG, "saveRvas(): copied to clipboard")
-        } catch (t: Throwable) {
-            Log.w(TAG, "saveRvas(): clipboard failed ${t.message}")
+        val values = ContentValues().apply {
+            put("key", KEY_RVAS)
+            put("value", text)
         }
+        storeCtx.contentResolver.insert(CONTENT_URI, values)
+        Log.i(TAG, "saveRvas(): stored ${rvas.size} items -> $text via provider")
     }
 
-    fun loadRvas(ctx: Context): List<Long> {
-        val raw = readClipboard(ctx).orEmpty()
-        if (raw.isBlank()) return emptyList()
-        val parsed = parseRaw(raw)
-        Log.i(TAG, "loadRvas(): raw=$raw -> ${parsed.size} items")
-        return parsed
+    fun loadRvasForApp(ctx: Context): List<Long> {
+        val storeCtx = ctx.applicationContext ?: ctx
+        return queryRvas(storeCtx)
+    }
+
+    fun loadRvasForHook(ctx: Context): List<Long> {
+        return queryRvas(ctx)
     }
 
     fun markHookedPackage(ctx: Context, pkg: String): Set<String> {
@@ -47,18 +45,36 @@ object HookConfigStore {
             }
     }
 
-    private fun readClipboard(ctx: Context): String? {
-        return try {
-            val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            if (!cm.hasPrimaryClip()) return null
-            val clip = cm.primaryClip ?: return null
-            val item = clip.getItemAt(0)
-            val text = item.text?.toString() ?: return null
-            Log.i(TAG, "readClipboard(): got ${text.length} chars")
-            text
+    private fun queryRvas(ctx: Context): List<Long> {
+        val cursor = try {
+            ctx.contentResolver.query(CONTENT_URI, null, null, null, null)
         } catch (t: Throwable) {
-            Log.w(TAG, "readClipboard() failed: ${t.message}")
+            Log.w(TAG, "queryRvas() failed: ${t.message}")
             null
+        } ?: return emptyList()
+
+        cursor.use { c ->
+            if (!c.moveToFirst()) return emptyList()
+            val keyIdx = c.getColumnIndex("key")
+            val valIdx = c.getColumnIndex("value")
+            val buffer = StringBuilder()
+            do {
+                val key = if (keyIdx >= 0) c.getString(keyIdx) else ""
+                val value = if (valIdx >= 0) c.getString(valIdx) else ""
+                if (key == KEY_RVAS) {
+                    buffer.append(value)
+                    break
+                }
+            } while (c.moveToNext())
+
+            val raw = buffer.toString()
+            if (raw.isBlank()) {
+                Log.i(TAG, "queryRvas(): empty result")
+                return emptyList()
+            }
+            val parsed = parseRaw(raw)
+            Log.i(TAG, "queryRvas(): raw=$raw -> ${parsed.size} items")
+            return parsed
         }
     }
 }

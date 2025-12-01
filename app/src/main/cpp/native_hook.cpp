@@ -504,7 +504,7 @@ Java_com_tools_module_NativeBridge_init(JNIEnv* env, jclass /*clazz*/, jstring p
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_tools_module_NativeBridge_updateHookTargets(JNIEnv* env, jclass /*clazz*/, jlongArray rvas) {
+Java_com_tools_module_NativeBridge_setConfig(JNIEnv* env, jclass /*clazz*/, jlongArray rvas) {
     if (rvas == nullptr) {
         return;
     }

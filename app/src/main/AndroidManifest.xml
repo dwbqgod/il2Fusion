@@ -32,6 +32,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <provider
+            android:name=".config.ConfigContentProvider"
+            android:authorities="com.tools.textextracttool.provider"
+            android:exported="true"
+            android:grantUriPermissions="true" />
     </application>
 
 </manifest>

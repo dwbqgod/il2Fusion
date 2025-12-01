@@ -6,7 +6,7 @@ TextExtractTool
 架构概览
 --------
 - LSPosed 模块入口：`com.tools.module.MainHook`（由 `META-INF/xposed_init` 指定），在目标进程的 `Application.attach` 后加载 `libnative_hook.so`，调用 JNI。
-- 配置桥：`HookConfigStore` 通过系统剪贴板同步用户填的 RVA 列表（避免跨进程读写 SharedPreferences 的权限问题），`MainHook` 启动时下发到 native。
+- 配置桥：通过 `ContentProvider` (`com.tools.textextracttool.provider/config`) 同步 RVA 列表，插件界面写入 provider，注入进程查询 provider 获得配置后调用 JNI `setConfig()` 下发到 native。
 - UI 插件：Compose 界面 `HookConfigScreen` 支持多行 RVA 输入（十六进制/十进制），提示一次只勾选一个应用。
 - Native 框架：`native_hook.cpp` 负责等待 `libil2cpp.so`、解析 `il2cpp_string_new`、按 RVA 安装 hook 并强制写入目标文本（示例 `"Hook Test"`）。当前链接的是 Dobby 源码（已做轻量兼容修改）。
 - LSPosed 元数据：`META-INF/xposed/module.prop`、`META-INF/xposed_init`、`META-INF/native_init` 打包入 assets。

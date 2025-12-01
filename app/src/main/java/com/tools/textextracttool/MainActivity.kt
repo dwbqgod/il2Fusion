@@ -61,7 +61,7 @@ fun HookConfigScreen() {
     val savedCount = remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
-        val saved = HookConfigStore.loadRvas(context)
+        val saved = HookConfigStore.loadRvasForApp(context)
         if (saved.isEmpty()) {
             rvaList.clear()
             rvaList.addAll(defaultRvas)

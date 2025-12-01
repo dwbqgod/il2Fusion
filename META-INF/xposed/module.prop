@@ -5,3 +5,4 @@ author=PenguinAndy
 description=文本提取工具
 minApi=21
 package=com.tools.textextracttool
+xposedminversion=93

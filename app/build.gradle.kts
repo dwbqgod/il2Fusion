@@ -11,7 +11,7 @@ android {
     defaultConfig {
         applicationId = "com.tools.textextracttool"
         minSdk = 31
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
         ndk {
