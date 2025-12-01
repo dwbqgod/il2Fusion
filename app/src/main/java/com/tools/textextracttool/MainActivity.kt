@@ -16,13 +16,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -51,18 +56,33 @@ fun HookConfigScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val rvaList = remember { mutableStateListOf<String>() }
+    val defaultRvas = listOf("0x1d236e8")
+    val snackbarHostState = remember { SnackbarHostState() }
+    val savedCount = remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
-        val saved = HookConfigStore.loadRvas(context).map { it.toString() }
+        val saved = HookConfigStore.loadRvas(context)
         if (saved.isEmpty()) {
-            rvaList.add("0x1d236e8")
+            rvaList.clear()
+            rvaList.addAll(defaultRvas)
+            // 自动保存默认值，避免 LSPosed 端读取到空列表
+            scope.launch {
+                persistRvas(context, rvaList, snackbarHostState, savedCount)
+            }
         } else {
-            rvaList.addAll(saved)
+            rvaList.clear()
+            rvaList.addAll(saved.map { formatRva(it) })
+            savedCount.value = saved.size
         }
     }
 
     Scaffold(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                Snackbar(snackbarData = data)
+            }
+        }
     ) { inner ->
         Column(
             modifier = Modifier
@@ -72,6 +92,7 @@ fun HookConfigScreen() {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("目标 RVA 列表（十六进制或十进制）")
+            Text("当前已保存：${savedCount.value} 个", modifier = Modifier.padding(bottom = 4.dp))
             Card(
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -110,13 +131,19 @@ fun HookConfigScreen() {
             ) {
                 Button(
                     onClick = {
-                        scope.launch {
-                            val parsed = rvaList.mapNotNull { parseRva(it) }
-                            HookConfigStore.saveRvas(context, parsed)
-                        }
+                        scope.launch { persistRvas(context, rvaList, snackbarHostState, savedCount) }
                     }
                 ) {
                     Text("保存到本地")
+                }
+                OutlinedButton(
+                    onClick = {
+                        rvaList.clear()
+                        rvaList.addAll(defaultRvas)
+                        scope.launch { persistRvas(context, rvaList, snackbarHostState, savedCount) }
+                    }
+                ) {
+                    Text("恢复默认")
                 }
             }
             Text(
@@ -125,6 +152,26 @@ fun HookConfigScreen() {
             )
         }
     }
+}
+
+private fun formatRva(value: Long): String {
+    return "0x" + value.toString(16)
+}
+
+private suspend fun persistRvas(
+    context: android.content.Context,
+    rvaList: List<String>,
+    snackbarHostState: SnackbarHostState,
+    savedCountState: androidx.compose.runtime.MutableState<Int>
+) {
+    val cleaned = rvaList.mapNotNull { parseRva(it) }
+    if (cleaned.isEmpty()) {
+        snackbarHostState.showSnackbar("至少填入一个有效的 RVA")
+        return
+    }
+    HookConfigStore.saveRvas(context, cleaned)
+    savedCountState.value = cleaned.size
+    snackbarHostState.showSnackbar("已保存 ${cleaned.size} 个 RVA")
 }
 
 @Preview(showBackground = true)

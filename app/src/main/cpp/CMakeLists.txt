@@ -5,9 +5,6 @@ project("TextExtractTool")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Dobby inline hook engine from source
-add_subdirectory(Dobby)
-
 add_library(
         native_hook
         SHARED
@@ -16,11 +13,17 @@ add_library(
 
 target_include_directories(
         native_hook PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/Dobby/include
 )
 
 target_link_libraries(
         native_hook
-        dobby
         log
 )
+
+add_library(DOBBY_LIB STATIC IMPORTED)
+
+set_target_properties(DOBBY_LIB PROPERTIES IMPORTED_LOCATION
+${CMAKE_CURRENT_SOURCE_DIR}/libs/${CMAKE_ANDROID_ARCH_ABI}/libdobby.a
+)
+
+target_link_libraries(native_hook DOBBY_LIB log)

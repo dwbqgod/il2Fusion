@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <dlfcn.h>
+#include <elf.h>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -15,7 +16,7 @@
 
 #include "dobby.h"
 
-#define LOG_TAG "TextExtractTool"
+#define LOG_TAG "[TextExtractTool]"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
@@ -43,8 +44,8 @@ std::vector<uintptr_t> g_rvas;
 std::vector<void*> g_installedTargets;
 std::atomic<HookRegistry*> g_registry{nullptr};
 uintptr_t g_il2cpp_base = 0;
-Il2CppString* g_managedText = nullptr;
 Il2CppStringNewFn g_stringNew = nullptr;
+std::string g_process_name = "unknown";
 
 uintptr_t find_module_base(const char* name) {
     FILE* fp = fopen("/proc/self/maps", "r");
@@ -81,17 +82,198 @@ uintptr_t wait_for_module(const char* name, std::chrono::milliseconds timeout) {
     return 0;
 }
 
-std::string narrow_from_utf16(const char16_t* data, int32_t len) {
-    std::string out;
-    out.reserve(len);
-    for (int32_t i = 0; i < len; ++i) {
-        const char16_t c = data[i];
-        if (c < 0x80) {
-            out.push_back(static_cast<char>(c));
-        } else {
-            out.push_back('?');
+std::string find_module_path(const char* name) {
+    FILE* fp = fopen("/proc/self/maps", "r");
+    if (!fp) {
+        return {};
+    }
+
+    char line[512];
+    while (fgets(line, sizeof(line), fp)) {
+        if (strstr(line, name) == nullptr) {
+            continue;
+        }
+        char* path = strchr(line, '/');
+        if (path != nullptr) {
+            const size_t len = strlen(path);
+            if (len > 0 && path[len - 1] == '\n') {
+                path[len - 1] = '\0';
+            }
+            fclose(fp);
+            return std::string(path);
         }
     }
+
+    fclose(fp);
+    return {};
+}
+
+uintptr_t find_export_in_elf(const char* path, const char* symbol, uintptr_t base) {
+    if (path == nullptr || symbol == nullptr || base == 0) {
+        return 0;
+    }
+
+    FILE* fp = fopen(path, "rb");
+    if (!fp) {
+        return 0;
+    }
+
+    Elf64_Ehdr ehdr64{};
+    if (fread(&ehdr64, 1, sizeof(ehdr64), fp) != sizeof(ehdr64)) {
+        fclose(fp);
+        return 0;
+    }
+
+    if (memcmp(ehdr64.e_ident, ELFMAG, SELFMAG) != 0) {
+        fclose(fp);
+        return 0;
+    }
+
+    const bool is64 = (ehdr64.e_ident[EI_CLASS] == ELFCLASS64);
+    fseek(fp, 0, SEEK_SET);  // rewind for reuse
+
+    if (is64) {
+        if (ehdr64.e_shentsize != sizeof(Elf64_Shdr)) {
+            fclose(fp);
+            return 0;
+        }
+        std::vector<Elf64_Shdr> shdrs(ehdr64.e_shnum);
+        fseek(fp, static_cast<long>(ehdr64.e_shoff), SEEK_SET);
+        if (fread(shdrs.data(), sizeof(Elf64_Shdr), shdrs.size(), fp) != shdrs.size()) {
+            fclose(fp);
+            return 0;
+        }
+
+        for (const auto& shdr : shdrs) {
+            if (shdr.sh_type != SHT_DYNSYM || shdr.sh_entsize != sizeof(Elf64_Sym)) {
+                continue;
+            }
+            if (shdr.sh_link >= shdrs.size()) {
+                continue;
+            }
+            const Elf64_Shdr& strhdr = shdrs[shdr.sh_link];
+            std::vector<char> strtab(strhdr.sh_size);
+            fseek(fp, static_cast<long>(strhdr.sh_offset), SEEK_SET);
+            if (fread(strtab.data(), 1, strtab.size(), fp) != strtab.size()) {
+                continue;
+            }
+
+            const size_t count = shdr.sh_size / sizeof(Elf64_Sym);
+            std::vector<Elf64_Sym> syms(count);
+            fseek(fp, static_cast<long>(shdr.sh_offset), SEEK_SET);
+            if (fread(syms.data(), sizeof(Elf64_Sym), syms.size(), fp) != syms.size()) {
+                continue;
+            }
+
+            for (const auto& sym : syms) {
+                if (sym.st_name >= strtab.size()) {
+                    continue;
+                }
+                const char* name = strtab.data() + sym.st_name;
+                if (strcmp(name, symbol) == 0 && sym.st_value != 0) {
+                    fclose(fp);
+                    return base + static_cast<uintptr_t>(sym.st_value);
+                }
+            }
+        }
+    } else {
+        Elf32_Ehdr ehdr32{};
+        if (fread(&ehdr32, 1, sizeof(ehdr32), fp) != sizeof(ehdr32)) {
+            fclose(fp);
+            return 0;
+        }
+        if (ehdr32.e_shentsize != sizeof(Elf32_Shdr)) {
+            fclose(fp);
+            return 0;
+        }
+        std::vector<Elf32_Shdr> shdrs(ehdr32.e_shnum);
+        fseek(fp, static_cast<long>(ehdr32.e_shoff), SEEK_SET);
+        if (fread(shdrs.data(), sizeof(Elf32_Shdr), shdrs.size(), fp) != shdrs.size()) {
+            fclose(fp);
+            return 0;
+        }
+
+        for (const auto& shdr : shdrs) {
+            if (shdr.sh_type != SHT_DYNSYM || shdr.sh_entsize != sizeof(Elf32_Sym)) {
+                continue;
+            }
+            if (shdr.sh_link >= shdrs.size()) {
+                continue;
+            }
+            const Elf32_Shdr& strhdr = shdrs[shdr.sh_link];
+            std::vector<char> strtab(strhdr.sh_size);
+            fseek(fp, static_cast<long>(strhdr.sh_offset), SEEK_SET);
+            if (fread(strtab.data(), 1, strtab.size(), fp) != strtab.size()) {
+                continue;
+            }
+
+            const size_t count = shdr.sh_size / sizeof(Elf32_Sym);
+            std::vector<Elf32_Sym> syms(count);
+            fseek(fp, static_cast<long>(shdr.sh_offset), SEEK_SET);
+            if (fread(syms.data(), sizeof(Elf32_Sym), syms.size(), fp) != syms.size()) {
+                continue;
+            }
+
+            for (const auto& sym : syms) {
+                if (sym.st_name >= strtab.size()) {
+                    continue;
+                }
+                const char* name = strtab.data() + sym.st_name;
+                if (strcmp(name, symbol) == 0 && sym.st_value != 0) {
+                    fclose(fp);
+                    return base + static_cast<uintptr_t>(sym.st_value);
+                }
+            }
+        }
+    }
+
+    fclose(fp);
+    return 0;
+}
+
+void append_utf8(std::string& out, uint32_t cp) {
+    if (cp <= 0x7F) {
+        out.push_back(static_cast<char>(cp));
+    } else if (cp <= 0x7FF) {
+        out.push_back(static_cast<char>(0xC0 | ((cp >> 6) & 0x1F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    } else if (cp <= 0xFFFF) {
+        out.push_back(static_cast<char>(0xE0 | ((cp >> 12) & 0x0F)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    } else if (cp <= 0x10FFFF) {
+        out.push_back(static_cast<char>(0xF0 | ((cp >> 18) & 0x07)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    } else {
+        out.push_back('?');
+    }
+}
+
+std::string utf16_to_utf8(const char16_t* data, int32_t len) {
+    std::string out;
+    out.reserve(static_cast<size_t>(len) * 3);
+
+    for (int32_t i = 0; i < len; ++i) {
+        uint32_t cp = data[i];
+
+        // Handle surrogate pairs
+        if (cp >= 0xD800 && cp <= 0xDBFF && (i + 1) < len) {
+            const uint32_t low = data[i + 1];
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                cp = 0x10000 + (((cp - 0xD800) << 10) | (low - 0xDC00));
+                ++i;
+            } else {
+                cp = '?';
+            }
+        } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+            cp = '?';
+        }
+
+        append_utf8(out, cp);
+    }
+
     return out;
 }
 
@@ -107,7 +289,7 @@ std::string describe_il2cpp_string(Il2CppString* str) {
         return std::string(buf);
     }
 
-    return narrow_from_utf16(str->chars, len);
+    return utf16_to_utf8(str->chars, len);
 }
 
 void* get_second_arg(DobbyRegisterContext* ctx) {
@@ -148,10 +330,6 @@ void setter_pre_handler(void* address, DobbyRegisterContext* ctx) {
         }
     }
 
-    if (g_managedText == nullptr) {
-        return;
-    }
-
     void* arg = get_second_arg(ctx);
     const auto original = describe_il2cpp_string(reinterpret_cast<Il2CppString*>(arg));
 
@@ -159,14 +337,44 @@ void setter_pre_handler(void* address, DobbyRegisterContext* ctx) {
         LOGI("[Setter] RVA 0x%" PRIxPTR " 原始内容: %s", rva, original.c_str());
     }
 
-    set_second_arg(ctx, g_managedText);
+    if (!g_stringNew) {
+        return;
+    }
+
+    Il2CppString* newStr = nullptr;
+    try {
+        newStr = g_stringNew(kTargetText);
+    } catch (...) {
+        LOGE("g_stringNew call failed");
+    }
+
+    if (newStr == nullptr) {
+        return;
+    }
+
+    set_second_arg(ctx, newStr);
+}
+
+void* open_il2cpp_handle() {
+    // 优先把符号引入全局命名空间，避免重复映射
+    void* handle = dlopen(kLibIl2cpp, RTLD_NOW | RTLD_GLOBAL | RTLD_NOLOAD);
+    if (handle) {
+        return handle;
+    }
+
+    const std::string path = find_module_path(kLibIl2cpp);
+    if (!path.empty()) {
+        handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL | RTLD_NOLOAD);
+        if (handle) {
+            return handle;
+        }
+    }
+
+    return dlopen(nullptr, RTLD_NOW);
 }
 
 bool prepare_il2cpp_factory() {
-    void* handle = dlopen(kLibIl2cpp, RTLD_NOW | RTLD_NOLOAD);
-    if (!handle) {
-        handle = dlopen(nullptr, RTLD_NOW);
-    }
+    void* handle = open_il2cpp_handle();
     if (!handle) {
         LOGE("dlopen failed when resolving il2cpp_string_new");
         return false;
@@ -176,13 +384,20 @@ bool prepare_il2cpp_factory() {
             dlsym(handle, "il2cpp_string_new"));
 
     if (!g_stringNew) {
-        LOGE("无法找到 il2cpp_string_new");
-        return false;
+        g_stringNew = reinterpret_cast<Il2CppStringNewFn>(
+                dlsym(RTLD_DEFAULT, "il2cpp_string_new"));
     }
 
-    g_managedText = g_stringNew(kTargetText);
-    if (!g_managedText) {
-        LOGE("创建托管字符串失败");
+    if (!g_stringNew) {
+        const std::string path = find_module_path(kLibIl2cpp);
+        const uintptr_t addr = find_export_in_elf(path.c_str(), "il2cpp_string_new", g_il2cpp_base);
+        if (addr != 0) {
+            g_stringNew = reinterpret_cast<Il2CppStringNewFn>(addr);
+        }
+    }
+
+    if (!g_stringNew) {
+        LOGE("无法找到 il2cpp_string_new");
         return false;
     }
 
@@ -208,13 +423,13 @@ void install_hooks_locked() {
     return;
 #endif
 
-    if (g_il2cpp_base == 0 || g_managedText == nullptr) {
+    if (g_il2cpp_base == 0) {
         LOGE("il2cpp 未准备好，跳过安装 hook");
         return;
     }
 
     if (g_rvas.empty()) {
-        LOGI("未配置任何 RVA，跳过安装 hook");
+        LOGI("未配置 RVA，跳过安装 hook");
         return;
     }
 
@@ -243,7 +458,7 @@ void update_rvas(const std::vector<uintptr_t>& newRvas) {
     g_rvas = newRvas;
     LOGI("更新 RVA 列表，共 %zu 个", g_rvas.size());
 
-    if (g_il2cpp_base != 0 && g_managedText != nullptr) {
+    if (g_il2cpp_base != 0) {
         install_hooks_locked();
     }
 }
@@ -251,11 +466,11 @@ void update_rvas(const std::vector<uintptr_t>& newRvas) {
 void init_worker() {
     g_il2cpp_base = wait_for_module(kLibIl2cpp, std::chrono::seconds(10));
     if (g_il2cpp_base == 0) {
-        LOGE("等待 %s 载入超时", kLibIl2cpp);
+        LOGI("[%s] 等待 %s 载入超时，当前进程可能未使用 Unity/il2cpp", g_process_name.c_str(), kLibIl2cpp);
         return;
     }
 
-    LOGI("%s loaded @ 0x%" PRIxPTR, kLibIl2cpp, g_il2cpp_base);
+    LOGI("[%s] %s loaded @ 0x%" PRIxPTR, g_process_name.c_str(), kLibIl2cpp, g_il2cpp_base);
 
     if (!prepare_il2cpp_factory()) {
         return;
@@ -268,13 +483,21 @@ void init_worker() {
 }  // namespace
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_tools_module_NativeBridge_init(JNIEnv* env, jclass /*clazz*/) {
+Java_com_tools_module_NativeBridge_init(JNIEnv* env, jclass /*clazz*/, jstring processName) {
+    if (processName != nullptr) {
+        const char* utf = env->GetStringUTFChars(processName, nullptr);
+        if (utf != nullptr) {
+            g_process_name.assign(utf);
+            env->ReleaseStringUTFChars(processName, utf);
+        }
+    }
+
     if (g_initialized.exchange(true)) {
-        LOGI("Native init already completed");
+        LOGI("[%s] Native init already completed", g_process_name.c_str());
         return;
     }
 
-    LOGI("Native init start");
+    LOGI("[%s] Native init start", g_process_name.c_str());
     std::thread(init_worker).detach();
 
     (void) env;

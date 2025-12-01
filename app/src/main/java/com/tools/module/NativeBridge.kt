@@ -8,6 +8,6 @@ package com.tools.module
  * </pre>
  */
 object NativeBridge {
-    @JvmStatic external fun init()
+    @JvmStatic external fun init(processName: String)
     @JvmStatic external fun updateHookTargets(targets: LongArray)
 }
