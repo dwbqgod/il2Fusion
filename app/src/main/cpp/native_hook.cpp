@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cinttypes>
+#include <cstdlib>
 #include <dlfcn.h>
 #include <mutex>
 #include <string>
@@ -42,6 +43,15 @@ JavaVM* g_vm = nullptr;
 jclass g_bridge_class = nullptr;
 jmethodID g_on_dump_finished = nullptr;
 
+std::string GetBasePackage(const std::string& process_name) {
+    if (process_name.empty()) return "unknown";
+    const auto pos = process_name.find(':');
+    if (pos != std::string::npos) {
+        return process_name.substr(0, pos);
+    }
+    return process_name;
+}
+
 void NotifyDumpResult(bool success, const char* msg) {
     if (g_vm == nullptr || g_bridge_class == nullptr || g_on_dump_finished == nullptr) {
         return;
@@ -60,6 +70,20 @@ void NotifyDumpResult(bool success, const char* msg) {
     env->DeleteLocalRef(jmsg);
     if (attached) {
         g_vm->DetachCurrentThread();
+    }
+}
+
+bool CopyDumpToSdcard(const std::string& pkg, std::string& outPath) {
+    const std::string src = g_dump_dir + "/files/dump.cs";
+    outPath = "/sdcard/Download/" + pkg + ".cs";
+    std::string cmd = "su -c 'cp " + src + " " + outPath + "'";
+    const int ret = system(cmd.c_str());
+    if (ret == 0) {
+        LOGI("copied dump to %s", outPath.c_str());
+        return true;
+    } else {
+        LOGE("copy dump failed ret=%d cmd=%s", ret, cmd.c_str());
+        return false;
     }
 }
 
@@ -87,7 +111,15 @@ void trigger_dump_async() {
         const bool ok = hack_prepare(g_dump_dir.c_str(), nullptr, 0);
         g_dump_started.store(false);
         if (ok) {
-            NotifyDumpResult(true, "Dump 完成");
+            std::string dst;
+            const std::string pkg = GetBasePackage(g_process_name);
+            const bool copyOk = CopyDumpToSdcard(pkg, dst);
+            if (copyOk) {
+                std::string msg = "Dump 完成，已复制到 " + dst;
+                NotifyDumpResult(true, msg.c_str());
+            } else {
+                NotifyDumpResult(true, "Dump 完成，复制到 Download 失败");
+            }
         } else {
             NotifyDumpResult(false, "Dump 失败，未找到 libil2cpp");
         }
