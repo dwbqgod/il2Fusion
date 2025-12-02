@@ -1,9 +1,12 @@
 package com.tools.textextracttool
 
 import android.os.Bundle
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,14 +27,19 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -55,10 +63,25 @@ class MainActivity : ComponentActivity() {
 fun HookConfigScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
     val rvaList = remember { mutableStateListOf<String>() }
     val defaultRvas = listOf("0x1d236e8")
     val snackbarHostState = remember { SnackbarHostState() }
     val savedCount = remember { mutableStateOf(0) }
+    var dumpModeEnabled by remember { mutableStateOf(false) }
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        scope.launch {
+            if (uri != null) {
+                snackbarHostState.showSnackbar("已选择文件：$uri（解析逻辑 TODO）")
+                // TODO: 处理所选文件内容
+            } else {
+                snackbarHostState.showSnackbar("未选择文件")
+            }
+        }
+    }
+    val maxRvaCount = 20
 
     LaunchedEffect(Unit) {
         val saved = HookConfigStore.loadRvasForApp(context)
@@ -88,9 +111,34 @@ fun HookConfigScreen() {
             modifier = Modifier
                 .padding(inner)
                 .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { focusManager.clearFocus() })
+                },
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Row(
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    Text("Il2CppDumper 启动模式")
+                    Text(if (dumpModeEnabled) "已开启（具体逻辑 TODO）" else "已关闭")
+                }
+                Switch(
+                    checked = dumpModeEnabled,
+                    onCheckedChange = { checked ->
+                        dumpModeEnabled = checked
+                        // TODO: 根据模式调整后续处理
+                    }
+                )
+            }
+            OutlinedButton(
+                onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("解析文件（打开 Download 选择）")
+            }
             Text("目标 RVA 列表（十六进制或十进制）")
             Text("当前已保存：${savedCount.value} 个", modifier = Modifier.padding(bottom = 4.dp))
             Card(
@@ -120,7 +168,17 @@ fun HookConfigScreen() {
                             }
                         }
                     }
-                    OutlinedButton(onClick = { rvaList.add("") }) {
+                    OutlinedButton(
+                        onClick = {
+                            if (rvaList.size >= maxRvaCount) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("最多支持 $maxRvaCount 条 RVA")
+                                }
+                                return@OutlinedButton
+                            }
+                            rvaList.add("")
+                        }
+                    ) {
                         Text("添加一行")
                     }
                 }
