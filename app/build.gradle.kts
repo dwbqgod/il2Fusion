@@ -41,10 +41,10 @@ android {
         compose = true
         buildConfig = true
     }
-    // Include META-INF as an assets source for LSPosed descriptors, and jniLibs at module root
+    // Pack LSPosed descriptors from src/main/assets, and allow optional jniLibs at module root
     sourceSets {
         getByName("main") {
-            assets.srcDirs("src/main/assets", "${project.rootDir}/META-INF")
+            assets.srcDir("src/main/assets")
             jniLibs.srcDirs("src/main/jniLibs", "${projectDir}/jniLibs")
         }
     }

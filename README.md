@@ -5,11 +5,11 @@ il2Fusion
 
 架构概览
 --------
-- LSPosed 模块入口：`com.tools.module.MainHook`（由 `META-INF/xposed_init` 指定），在目标进程的 `Application.attach` 后加载 `libnative_hook.so`，调用 JNI。
+- LSPosed 模块入口：`com.tools.module.MainHook`（由 `assets/xposed_init` 指定），在目标进程的 `Application.attach` 后加载 `libnative_hook.so`，调用 JNI。
 - 配置桥：通过 `ContentProvider` (`com.tools.il2fusion.provider/config`) 同步 RVA 列表与 dump 模式开关，插件界面写入 provider，注入进程查询 provider 后调用 JNI 下发。
 - UI 插件：Compose 界面 `HookConfigScreen` 支持多行 RVA 输入（十六进制/十进制）、Il2CppDumper 模式开关，并可从 `.cs` dump 文件解析 `set_Text` 上方的 RVA 自动填充；提示一次只勾选一个应用。
 - Native 框架：`native_hook.cpp` 负责等待 `libil2cpp.so`，按配置安装 Dobby hook 记录文本；在 dump 模式触发 Il2CppDumper (`il2cpp_dump.cpp`) 生成 `dump.cs`，并尝试 `su -c cp` 复制到 `/sdcard/Download/<pkg>.cs`，结果通过 Toast 提示。
-- LSPosed 元数据：`META-INF/xposed/module.prop`、`META-INF/xposed_init`、`META-INF/native_init` 打包入 assets。
+- LSPosed 元数据：`app/src/main/assets/xposed/module.prop`、`app/src/main/assets/xposed_init`、`app/src/main/assets/native_init`。
 
 使用方法
 --------
@@ -34,7 +34,7 @@ il2Fusion
 - `app/src/main/java/com/tools/module/`：LSPosed 入口、JNI 桥。  
 - `app/src/main/java/com/tools/il2fusion/`：插件 UI、配置存取、dump 文件解析（填充 RVA）。  
 - `app/src/main/cpp/`：native hook 逻辑、Il2CppDumper、Dobby。  
-- `META-INF/`：LSPosed 模块声明与入口文件。  
+- `app/src/main/assets/`：LSPosed 模块声明与入口文件。  
 
 注意事项
 --------
