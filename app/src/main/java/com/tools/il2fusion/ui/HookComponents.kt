@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -171,17 +173,25 @@ fun RvaEditorCard(
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = "目标 RVA 列表",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-            )
-            Text(
-                text = "当前已保存：$savedCount 个",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "目标 RVA 列表",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                    Text(
+                        text = "当前已保存：$savedCount 个 · 支持 0x/十进制",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -197,9 +207,10 @@ fun RvaEditorCard(
                 OutlinedButton(
                     onClick = onAddRva,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
-                    Text("添加一行")
+                    Text("＋ 添加一行")
                 }
             }
         }
@@ -213,33 +224,36 @@ fun RvaField(
     onValueChange: (String) -> Unit,
     onRemove: () -> Unit,
     isRemovable: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text("RVA #${index + 1}") },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.weight(1f),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
+        )
+        TextButton(
+            onClick = onRemove,
+            enabled = isRemovable,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.height(48.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
         ) {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                label = { Text("RVA #${index + 1}") },
-                singleLine = true,
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.weight(1f),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
+            Text(
+                text = "删除",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                maxLines = 1
             )
-            OutlinedButton(
-                onClick = onRemove,
-                enabled = isRemovable,
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier
-                    .height(48.dp)
-                    .width(74.dp)
-            ) {
-                Text("删除")
-            }
         }
     }
+}
 
 @Composable
 fun ActionRow(

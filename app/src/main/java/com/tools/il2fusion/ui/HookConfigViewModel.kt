@@ -14,8 +14,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
-private const val MAX_RVA_COUNT = 20
-
 /**
  * Holds UI state for the hook configuration screen and coordinates data operations.
  */
@@ -75,16 +73,10 @@ class HookConfigViewModel(
     }
 
     /**
-     * Adds a new blank RVA row if under max count, otherwise shows a message.
+     * Adds a new blank RVA row.
      */
     fun onAddRva() {
         val current = _state.value.rvaInputs
-        if (current.size >= MAX_RVA_COUNT) {
-            viewModelScope.launch {
-                _events.send(HookConfigEvent.ShowMessage("最多支持 $MAX_RVA_COUNT 条 RVA"))
-            }
-            return
-        }
         _state.value = _state.value.copy(rvaInputs = current + "")
     }
 
@@ -141,9 +133,9 @@ class HookConfigViewModel(
             return
         }
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true)
+                _state.value = _state.value.copy(isLoading = true)
             try {
-                val added = dumpFileParser.extractRvas(context, uri, MAX_RVA_COUNT)
+                val added = dumpFileParser.extractRvas(context, uri, Int.MAX_VALUE)
                 if (added.isNotEmpty()) {
                     _state.value = _state.value.copy(rvaInputs = added)
                     _events.send(HookConfigEvent.ShowMessage("解析到 ${added.size} 条 RVA"))
