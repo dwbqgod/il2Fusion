@@ -27,7 +27,8 @@ English version: see [README_EN](https://github.com/PenguinAndy/il2Fusion/blob/m
 - 默认 ABI：`arm64-v8a`（如需其他 ABI，请补齐 `app/src/main/cpp/libs/<abi>/libdobby.a` 并调整 `ndk.abiFilters`）。
 - 已验证设备：
   - Google Pixel 3 XL，Android 12（SP1A.210812.016.C2 / 8618562）。
-  - MacOS 端 MuMu Android12 模拟器
+  - MacOS 端 MuMu Android 12 模拟器
+  - Windows 端 MuMu Android 12 模拟器 Dump 正常
 
 ## 快速开始
 1) 构建模块：`./gradlew :app:assembleDebug`（包含 CMake，生成 `libnative_hook.so`）。  
