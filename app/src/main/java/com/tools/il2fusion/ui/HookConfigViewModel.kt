@@ -7,12 +7,15 @@ import androidx.lifecycle.viewModelScope
 import com.tools.il2fusion.config.HookConfigRepository
 import com.tools.il2fusion.utils.DumpFileParser
 import com.tools.il2fusion.utils.RvaUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.widget.Toast
 
 /**
  * Holds UI state for the hook configuration screen and coordinates data operations.
@@ -133,14 +136,27 @@ class HookConfigViewModel(
             return
         }
         viewModelScope.launch {
-                _state.value = _state.value.copy(isLoading = true)
+            _state.value = _state.value.copy(isLoading = true)
             try {
-                val added = dumpFileParser.extractRvas(context, uri, Int.MAX_VALUE)
-                if (added.isNotEmpty()) {
-                    _state.value = _state.value.copy(rvaInputs = added)
-                    _events.send(HookConfigEvent.ShowMessage("解析到 ${added.size} 条 RVA"))
+                val result = dumpFileParser.extractRvas(context, uri, Int.MAX_VALUE)
+                if (result.addresses.isNotEmpty()) {
+                    _state.value = _state.value.copy(rvaInputs = result.addresses)
+                    _events.send(HookConfigEvent.ShowMessage("解析到 ${result.addresses.size} 条 RVA"))
                 } else {
                     _events.send(HookConfigEvent.ShowMessage("未在文件中找到 set_Text 的 RVA"))
+                }
+                if (result.savedJsonPath != null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            context.applicationContext,
+                            "已保存 JSON 到 ${result.savedJsonPath}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } else {
+                    if (result.addresses.isNotEmpty()) {
+                        _events.send(HookConfigEvent.ShowMessage("JSON 保存失败，已解析 RVA"))
+                    }
                 }
             } finally {
                 _state.value = _state.value.copy(isLoading = false)
