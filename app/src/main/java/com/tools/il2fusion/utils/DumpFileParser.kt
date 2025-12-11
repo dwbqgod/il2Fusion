@@ -11,48 +11,45 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Handles extracting RVA values from Il2Cpp dumper output files.
+ * Handles extracting set_text method signatures from Il2Cpp dumper output files.
  */
 class DumpFileParser {
 
-    data class RvaEntry(val functionName: String, val address: String)
+    data class TargetEntry(val functionName: String, val address: String)
 
-    data class RvaParseResult(
-        val addresses: List<String>,
-        val entries: List<RvaEntry>,
+    data class DumpParseResult(
+        val entries: List<TargetEntry>,
         val savedJsonPath: String?
     )
 
     /**
-     * Reads a C# dump file and returns RVA strings found above set_Text methods.
+     * Reads a C# dump file and returns set_text methods with their RVA for reference.
      */
-    suspend fun extractRvas(
+    suspend fun extractTargets(
         context: Context,
         uri: Uri,
         maxCount: Int
-    ): RvaParseResult = withContext(Dispatchers.IO) {
+    ): DumpParseResult = withContext(Dispatchers.IO) {
         val sourceName = Utils.resolveDisplayName(context, uri) ?: "dump"
         val resolver = context.contentResolver
-        val input = resolver.openInputStream(uri) ?: return@withContext RvaParseResult(
-            emptyList(),
-            emptyList(),
-            null
+        val input = resolver.openInputStream(uri) ?: return@withContext DumpParseResult(
+            entries = emptyList(),
+            savedJsonPath = null
         )
-        val entries = mutableListOf<RvaEntry>()
+        val entries = mutableListOf<TargetEntry>()
         input.use { stream ->
             BufferedReader(InputStreamReader(stream)).use { reader ->
                 parseDumpLines(reader.readLines(), maxCount, entries)
             }
         }
-        val addresses = entries.map { it.address }
         val savedPath = saveJsonToDownload(context, entries, sourceName)
-        return@withContext RvaParseResult(addresses, entries, savedPath)
+        return@withContext DumpParseResult(entries = entries, savedJsonPath = savedPath)
     }
 
     private fun parseDumpLines(
         lines: List<String>,
         maxCount: Int,
-        output: MutableList<RvaEntry>
+        output: MutableList<TargetEntry>
     ) {
         val setTextPattern = Utils.setTextPattern
         val rvaPattern = Utils.rvaPattern
@@ -78,8 +75,8 @@ class DumpFileParser {
             val methodName = extractMethodName(next) ?: "set_Text"
             val functionName = buildFunctionName(currentNamespace, currentClass, methodName)
             val address = RvaUtils.formatRva(parsed)
-            if (output.any { it.address == address }) continue
-            output.add(RvaEntry(functionName = functionName, address = address))
+            if (output.any { it.address == address || it.functionName == functionName }) continue
+            output.add(TargetEntry(functionName = functionName, address = address))
             if (output.size >= maxCount) break
         }
     }
@@ -96,7 +93,7 @@ class DumpFileParser {
         return parts.joinToString(".")
     }
 
-    private fun saveJsonToDownload(context: Context, entries: List<RvaEntry>, sourceName: String): String? {
+    private fun saveJsonToDownload(context: Context, entries: List<TargetEntry>, sourceName: String): String? {
         if (entries.isEmpty()) return null
         return try {
             val root = JSONObject()
@@ -107,10 +104,10 @@ class DumpFileParser {
                 obj.put("address", entry.address)
                 array.put(obj)
             }
-            root.put("rvas", array)
+            root.put("targets", array)
 
             val destFileName = Utils.buildFileNameFromSource(sourceName, "json")
-            val tmpFile = File(context.filesDir, "parsed_rvas.json")
+            val tmpFile = File(context.filesDir, "parsed_targets.json")
             tmpFile.writeText(root.toString(2))
 
             Utils.moveToDownload(tmpFile, destFileName)

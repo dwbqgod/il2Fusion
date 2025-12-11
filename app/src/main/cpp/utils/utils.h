@@ -30,4 +30,11 @@ void* GetSecondArg(DobbyRegisterContext* ctx);
 void SetSecondArg(DobbyRegisterContext* ctx, void* value);
 }
 
+extern "C" {
+int find_handle(const char* handle_name);
+void* lookup_symbol(const char* libraryname, const char* symbolname);
+void* lookup_symbol2(const char* libraryname, const char* symbolname);
+const char* find_full_path(const char* libraryname);
+}
+
 #endif  // IL2FUSION_UTILS_H

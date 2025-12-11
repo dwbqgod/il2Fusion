@@ -16,12 +16,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ParseTextScreen(
     state: HookConfigState,
-    onRvaChanged: (Int, String) -> Unit,
-    onAddRva: () -> Unit,
-    onRemoveRva: (Int) -> Unit,
-    onSave: () -> Unit,
-    onRestoreDefault: () -> Unit,
     onPickFile: () -> Unit,
+    onSave: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val accent = MaterialTheme.colorScheme.primary
@@ -43,23 +39,19 @@ fun ParseTextScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)
         ) {
-            // 解析 dump.cs 并维护 RVA 列表
+            // 解析 dump.cs 并展示方法列表
             FileCard(
                 isLoading = state.isLoading,
                 onPickFile = onPickFile
             )
 
-            RvaEditorCard(
-                rvaInputs = state.rvaInputs,
-                onRvaChanged = onRvaChanged,
-                onAddRva = onAddRva,
-                onRemoveRva = onRemoveRva,
+            MethodListCard(
+                methods = state.methodInputs,
                 savedCount = state.savedCount
             )
 
-            ActionRow(
-                onSave = onSave,
-                onRestoreDefault = onRestoreDefault
+            SaveRow(
+                onSave = onSave
             )
 
             FooterNote()

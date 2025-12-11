@@ -15,9 +15,9 @@ LSPosed (Java-layer hook) + Dobby (native hook) + ContentProvider IPC, built aro
 
 ## Features
 - Dump-first: one-tap Il2CppDumper to produce `dump.cs`, auto-copy to `/sdcard/Download/<pkg>.cs` with Toast feedback; LSPosed + Provider config eases the sync/output pain points seen in Zygisk-Il2CppDumper setups.
-- Text logging (community localization experiment): hook `set_Text` by RVA in `libil2cpp.so`, log incoming strings into SQLite for later processing; feel free to extend new use cases.
+- Text logging (community localization experiment): hook `set_text` via method signature (e.g., `FairyGUI.InputTextField.set_text`) in `libil2cpp.so`, log incoming strings into SQLite for later processing; feel free to extend new use cases.
 - Config sync: plugin app writes to `ContentProvider (com.tools.il2fusion.provider/config)`, injected process reads and forwards to native.
-- File parsing: parse `set_Text` RVAs from `.cs` dump files (hex/decimal mixed input supported).
+- File parsing: parse `set_text` method names from `.cs` dump files and export JSON for import.
 
 ## Requirements
 - Rooted device with Magisk + LSPosed (enable only one target app at a time).
@@ -29,7 +29,7 @@ LSPosed (Java-layer hook) + Dobby (native hook) + ContentProvider IPC, built aro
 1) Build: `./gradlew :app:assembleDebug` (CMake included, outputs `libnative_hook.so`).
 2) Install and enable the module in LSPosed (select a single target app).
 3) In the plugin app:
-   - Text mode: leave Dump off, enter/parse RVAs, then "Save locally".
+   - Text mode: leave Dump off, parse `dump.cs` to auto-fill `Namespace.Class.set_text` list (no manual typing, auto-saved after parsing).
    - Dump mode: toggle Dump on; launch the target app to generate `dump.cs` and copy to Download.
 4) Validate in target app:
    - Text mode: waits for `libil2cpp.so`, installs hooks, logcat tags `[il2Fusion]` / `DobbyStub`; text stored at `/data/data/<pkg>/text.db`.
@@ -37,7 +37,7 @@ LSPosed (Java-layer hook) + Dobby (native hook) + ContentProvider IPC, built aro
 
 ## Architecture & Layout
 - LSPosed entry: `app/src/main/java/com/tools/module/MainHook.kt` (declared in `assets/xposed_init`), loads `libnative_hook.so` in `Application.attach`.
-- Config layer: `app/src/main/java/com/tools/il2fusion/config/` uses `ContentProvider` to sync dump switch and RVA list.
+- Config layer: `app/src/main/java/com/tools/il2fusion/config/` uses `ContentProvider` to sync dump switch and method list.
 - UI: `app/src/main/java/com/tools/il2fusion/ui/` (Compose tabs for Overview / Dump / Parse).
 - Native hook: `app/src/main/cpp/native_hook.cpp`, waits for `libil2cpp.so`, installs Dobby hooks, writes to SQLite.
 - Il2CppDumper: `app/src/main/cpp/il2CppDumper/`, copies results to Download when possible.

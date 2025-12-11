@@ -109,12 +109,8 @@ fun HookConfigApp(viewModel: HookConfigViewModel = viewModel()) {
                         )
                         SideTab.Parse -> ParseTextScreen(
                             state = state,
-                            onRvaChanged = viewModel::onRvaChanged,
-                            onAddRva = viewModel::onAddRva,
-                            onRemoveRva = viewModel::onRemoveRva,
-                            onSave = { viewModel.onSave(context) },
-                            onRestoreDefault = { viewModel.onRestoreDefault(context) },
                             onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) },
+                            onSave = { viewModel.onSave(context) },
                             modifier = Modifier.fillMaxSize()
                         )
                     }

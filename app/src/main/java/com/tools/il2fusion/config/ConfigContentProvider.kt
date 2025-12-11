@@ -14,7 +14,7 @@ class ConfigContentProvider : ContentProvider() {
         private const val TAG = "[il2Fusion]"
         private const val AUTHORITY = "com.tools.il2fusion.provider"
         private const val PATH_CONFIG = "config"
-        const val KEY_RVAS = "rvas"
+        const val KEY_TARGETS = "targets"
         const val KEY_DUMP_MODE = "dump_mode"
         private const val CODE_CONFIG = 1
         val CONTENT_URI: Uri = Uri.parse("content://$AUTHORITY/$PATH_CONFIG")
@@ -50,7 +50,7 @@ class ConfigContentProvider : ContentProvider() {
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
         if (uriMatcher.match(uri) != CODE_CONFIG) return null
         val prefs = context?.getSharedPreferences(PATH_CONFIG, android.content.Context.MODE_PRIVATE) ?: return null
-        val key = values?.getAsString("key") ?: KEY_RVAS
+        val key = values?.getAsString("key") ?: KEY_TARGETS
         val value = values?.getAsString("value") ?: ""
         prefs.edit().putString(key, value).apply()
         Log.i(TAG, "ConfigContentProvider insert key=$key")
@@ -65,7 +65,7 @@ class ConfigContentProvider : ContentProvider() {
     ): Int {
         if (uriMatcher.match(uri) != CODE_CONFIG) return 0
         val prefs = context?.getSharedPreferences(PATH_CONFIG, android.content.Context.MODE_PRIVATE) ?: return 0
-        val key = values?.getAsString("key") ?: KEY_RVAS
+        val key = values?.getAsString("key") ?: KEY_TARGETS
         val value = values?.getAsString("value") ?: ""
         prefs.edit().putString(key, value).apply()
         Log.i(TAG, "ConfigContentProvider update key=$key")

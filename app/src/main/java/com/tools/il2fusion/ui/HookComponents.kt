@@ -9,27 +9,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -57,7 +51,7 @@ fun HeaderCard(dumpModeEnabled: Boolean, savedCount: Int) {
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Badge(text = "已保存 $savedCount 条 RVA")
+                Badge(text = "已保存 $savedCount 个方法")
                 Badge(text = if (dumpModeEnabled) "仅 Dump" else "拦截 & 记录")
             }
         }
@@ -135,11 +129,11 @@ fun FileCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "从 dump 文件解析 RVA",
+                text = "从 dump 文件解析并保存 set_text 方法",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
             )
             Text(
-                text = "打开 Download 目录选择 .cs dump 文件，自动抓取 set_Text 上方的 RVA。",
+                text = "打开 Download 目录选择 .cs dump 文件，自动抓取 set_text 方法并保存到配置。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -157,11 +151,8 @@ fun FileCard(
 }
 
 @Composable
-fun RvaEditorCard(
-    rvaInputs: List<String>,
-    onRvaChanged: (Int, String) -> Unit,
-    onAddRva: () -> Unit,
-    onRemoveRva: (Int) -> Unit,
+fun MethodListCard(
+    methods: List<String>,
     savedCount: Int
 ) {
     Card(
@@ -173,7 +164,7 @@ fun RvaEditorCard(
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -182,35 +173,33 @@ fun RvaEditorCard(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "目标 RVA 列表",
+                        text = "目标方法列表",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                     )
                     Text(
-                        text = "当前已保存：$savedCount 个 · 支持 0x/十进制",
+                        text = "当前已保存：$savedCount 个 · 解析后只读展示",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                rvaInputs.forEachIndexed { index, value ->
-                    RvaField(
-                        index = index,
-                        value = value,
-                        onValueChange = { onRvaChanged(index, it) },
-                        onRemove = { onRemoveRva(index) },
-                        isRemovable = rvaInputs.size > 1
-                    )
-                }
-                OutlinedButton(
-                    onClick = onAddRva,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
+            if (methods.isEmpty()) {
+                Text(
+                    text = "暂无方法，请先解析 dump.cs",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("＋ 添加一行")
+                    methods.forEachIndexed { idx, item ->
+                        Text(
+                            text = "${idx + 1}. $item",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
         }
@@ -218,47 +207,8 @@ fun RvaEditorCard(
 }
 
 @Composable
-fun RvaField(
-    index: Int,
-    value: String,
-    onValueChange: (String) -> Unit,
-    onRemove: () -> Unit,
-    isRemovable: Boolean
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            label = { Text("RVA #${index + 1}") },
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.weight(1f),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
-        )
-        TextButton(
-            onClick = onRemove,
-            enabled = isRemovable,
-            shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.height(48.dp),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
-        ) {
-            Text(
-                text = "删除",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-                maxLines = 1
-            )
-        }
-    }
-}
-
-@Composable
-fun ActionRow(
-    onSave: () -> Unit,
-    onRestoreDefault: () -> Unit
+fun SaveRow(
+    onSave: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -269,12 +219,6 @@ fun ActionRow(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("保存到本地")
-        }
-        OutlinedButton(
-            onClick = onRestoreDefault,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("恢复默认")
         }
     }
 }

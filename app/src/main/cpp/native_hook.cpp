@@ -36,22 +36,29 @@ Java_com_tools_module_NativeBridge_init(JNIEnv* env, jclass /*clazz*/, jstring p
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_tools_module_NativeBridge_setConfig(JNIEnv* env, jclass /*clazz*/, jlongArray rvas) {
-    if (rvas == nullptr) {
+Java_com_tools_module_NativeBridge_setTargets(JNIEnv* env, jclass /*clazz*/, jobjectArray targets) {
+    if (targets == nullptr) {
         return;
     }
 
-    const jsize len = env->GetArrayLength(rvas);
-    std::vector<uintptr_t> values;
-    values.reserve(static_cast<size_t>(len));
+    const jsize len = env->GetArrayLength(targets);
+    std::vector<std::string> names;
+    names.reserve(static_cast<size_t>(len));
 
-    jlong* elems = env->GetLongArrayElements(rvas, nullptr);
     for (jsize i = 0; i < len; ++i) {
-        values.push_back(static_cast<uintptr_t>(elems[i]));
+        auto str = static_cast<jstring>(env->GetObjectArrayElement(targets, i));
+        if (str == nullptr) {
+            continue;
+        }
+        const char* utf = env->GetStringUTFChars(str, nullptr);
+        if (utf != nullptr) {
+            names.emplace_back(utf);
+            env->ReleaseStringUTFChars(str, utf);
+        }
+        env->DeleteLocalRef(str);
     }
-    env->ReleaseLongArrayElements(rvas, elems, JNI_ABORT);
 
-    text_extractor::UpdateRvas(values);
+    text_extractor::UpdateTargets(names);
 }
 
 extern "C" JNIEXPORT void JNICALL

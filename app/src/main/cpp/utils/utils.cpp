@@ -3,13 +3,16 @@
 #include <cctype>
 #include <cinttypes>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
 #include <elf.h>
+#include <unistd.h>
 #include <thread>
 #include <vector>
 
 #include "dobby.h"
+#include "log.h"
 
 namespace textutils {
 
@@ -324,3 +327,114 @@ void SetSecondArg(DobbyRegisterContext* ctx, void* value) {
 }
 
 }  // namespace hookutils
+
+extern "C" {
+
+int find_handle(const char* handle_name) {
+    FILE* fp;
+    char filename[32];
+    char line[1024];
+    const int pid = getpid();
+    if (pid < 0) {
+        strcpy(filename, "/proc/self/maps");
+    } else {
+        snprintf(filename, sizeof(filename), "/proc/%d/maps", pid);
+    }
+    fp = fopen(filename, "r");
+    if (fp != nullptr) {
+        while (fgets(line, sizeof(line), fp)) {
+            if (strstr(line, handle_name)) {
+                LOGI("find_handle -> %s", line);
+                fclose(fp);
+                return 1;
+            }
+        }
+        fclose(fp);
+    }
+    return 0;
+}
+
+void* lookup_symbol(const char* libraryname, const char* symbolname) {
+    void* handle = dlopen(libraryname, RTLD_GLOBAL | RTLD_NOW);
+    if (handle != nullptr) {
+        void* symbol = dlsym(handle, symbolname);
+        if (symbol != nullptr) {
+            return symbol;
+        }
+        LOGE("lookup_symbol: %s not found in %s", symbolname, libraryname);
+    }
+    return nullptr;
+}
+
+void* lookup_symbol2(const char* libraryname, const char* symbolname) {
+    FILE* fp;
+    char* pch;
+    void* path = malloc(1024);
+    char filename[32];
+    char line[1024];
+    const int pid = getpid();
+    void* handle = nullptr;
+
+    if (pid < 0) {
+        strcpy(filename, "/proc/self/maps");
+    } else {
+        snprintf(filename, sizeof(filename), "/proc/%d/maps", pid);
+    }
+    fp = fopen(filename, "r");
+    if (fp != nullptr) {
+        while (fgets(line, sizeof(line), fp)) {
+            if (strstr(line, libraryname)) {
+                pch = strtok(line, " ");
+                while (pch != nullptr && !strstr(pch, libraryname)) {
+                    pch = strtok(nullptr, " ");
+                }
+                memset(path, 0, 1024);
+                memcpy(path, pch, strlen(pch) - 1);
+
+                handle = lookup_symbol(static_cast<const char*>(path), symbolname);
+                if (handle != nullptr) {
+                    LOGI("lookup_symbol2 success: %s %s %p", static_cast<char*>(path), symbolname, handle);
+                    break;
+                }
+            }
+        }
+        fclose(fp);
+    }
+    free(path);
+    return handle;
+}
+
+const char* find_full_path(const char* libraryname) {
+    FILE* fp;
+    char* pch;
+    void* path = malloc(1024);
+    memset(path, 0, 1024);
+    char filename[32];
+    char line[1024];
+    const int pid = getpid();
+
+    if (pid < 0) {
+        strcpy(filename, "/proc/self/maps");
+    } else {
+        snprintf(filename, sizeof(filename), "/proc/%d/maps", pid);
+    }
+    fp = fopen(filename, "r");
+    if (fp != nullptr) {
+        while (fgets(line, sizeof(line), fp)) {
+            if (strstr(line, libraryname)) {
+                pch = strtok(line, " ");
+                while (pch != nullptr && !strstr(pch, libraryname)) {
+                    pch = strtok(nullptr, " ");
+                }
+                memcpy(path, pch, strlen(pch) - 1);
+                fclose(fp);
+                return static_cast<const char*>(path);
+            }
+        }
+        fclose(fp);
+    }
+    free(path);
+    return nullptr;
+}
+
+}  // extern "C"

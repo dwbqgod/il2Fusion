@@ -10,12 +10,12 @@ import kotlinx.coroutines.withContext
 class HookConfigRepository {
 
     /**
-     * Loads stored RVA list and dump mode flag from the shared content provider.
+     * Loads stored target method list and dump mode flag from the shared content provider.
      */
     suspend fun loadConfig(context: Context): HookConfigPayload = withContext(Dispatchers.IO) {
-        val savedRvas = HookConfigStore.loadRvasForApp(context)
+        val savedTargets = HookConfigStore.loadTargetsForApp(context)
         val dumpMode = HookConfigStore.loadDumpModeForApp(context)
-        HookConfigPayload(savedRvas, dumpMode)
+        HookConfigPayload(savedTargets, dumpMode)
     }
 
     /**
@@ -26,10 +26,10 @@ class HookConfigRepository {
     }
 
     /**
-     * Persists the RVA list through the content provider.
+     * Persists the target method list through the content provider.
      */
-    suspend fun saveRvas(context: Context, rvas: List<Long>) = withContext(Dispatchers.IO) {
-        HookConfigStore.saveRvas(context, rvas)
+    suspend fun saveTargets(context: Context, targets: List<String>) = withContext(Dispatchers.IO) {
+        HookConfigStore.saveTargets(context, targets)
     }
 }
 
@@ -37,6 +37,6 @@ class HookConfigRepository {
  * Represents stored configuration values used by both the UI and native hook.
  */
 data class HookConfigPayload(
-    val rvas: List<Long>,
+    val targets: List<String>,
     val dumpModeEnabled: Boolean
 )

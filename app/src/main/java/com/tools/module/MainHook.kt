@@ -94,17 +94,17 @@ class MainHook: IXposedHookLoadPackage {
                             XposedBridge.log("$TAG startDump failed: $e")
                         }
                     } else {
-                        // 文本拦截模式：下发 RVA 列表，开启文本日志
+                        // 文本拦截模式：下发目标方法列表，开启文本日志
                         try {
-                            val rvas = HookConfigStore.loadRvasForHook(ctx).toLongArray()
-                            NativeBridge.setConfig(rvas)
-                            XposedBridge.log("$TAG setConfig -> ${rvas.joinToString()}")
+                            val targets = HookConfigStore.loadTargetsForHook(ctx).toTypedArray()
+                            NativeBridge.setTargets(targets)
+                            XposedBridge.log("$TAG setTargets -> ${targets.joinToString()}")
                             // 如果当前列表为空，延迟重试几次，避免主进程早于配置写入完成
-                            if (rvas.isEmpty()) {
-                                retryLoadRvas(ctx, 3, 500L)
+                            if (targets.isEmpty()) {
+                                retryLoadTargets(ctx, 3, 500L)
                             }
                         } catch (e: Throwable) {
-                            XposedBridge.log("$TAG setConfig failed: $e")
+                            XposedBridge.log("$TAG setTargets failed: $e")
                         }
                     }
                 }
@@ -112,20 +112,20 @@ class MainHook: IXposedHookLoadPackage {
         )
     }
 
-    private fun retryLoadRvas(ctx: Context, times: Int, delayMs: Long) {
+    private fun retryLoadTargets(ctx: Context, times: Int, delayMs: Long) {
         if (times <= 0) return
         Thread {
             repeat(times) { idx ->
                 try {
                     Thread.sleep(delayMs)
-                    val rvas = HookConfigStore.loadRvasForHook(ctx).toLongArray()
-                    if (rvas.isNotEmpty()) {
-                        NativeBridge.setConfig(rvas)
-                        XposedBridge.log("$TAG retry#$idx setConfig -> ${rvas.joinToString()}")
+                    val targets = HookConfigStore.loadTargetsForHook(ctx).toTypedArray()
+                    if (targets.isNotEmpty()) {
+                        NativeBridge.setTargets(targets)
+                        XposedBridge.log("$TAG retry#$idx setTargets -> ${targets.joinToString()}")
                         return@Thread
                     }
                 } catch (t: Throwable) {
-                    XposedBridge.log("$TAG retryLoadRvas failed: $t")
+                    XposedBridge.log("$TAG retryLoadTargets failed: $t")
                 }
             }
         }.start()

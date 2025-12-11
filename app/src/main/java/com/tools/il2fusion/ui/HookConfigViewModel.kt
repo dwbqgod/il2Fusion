@@ -6,7 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tools.il2fusion.config.HookConfigRepository
 import com.tools.il2fusion.utils.DumpFileParser
-import com.tools.il2fusion.utils.RvaUtils
+import com.tools.il2fusion.utils.HookTargetUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,21 +32,21 @@ class HookConfigViewModel(
     val events = _events.receiveAsFlow()
 
     /**
-     * Loads initial dump mode and RVA list; when empty, present a blank row without auto-save.
+     * Loads initial dump mode and method list; empty state shows read-only placeholder.
      */
     fun loadInitial(context: Context) {
         viewModelScope.launch {
             val payload = repository.loadConfig(context)
-            if (payload.rvas.isEmpty()) {
+            if (payload.targets.isEmpty()) {
                 _state.value = HookConfigState(
-                    rvaInputs = listOf(""),
+                    methodInputs = emptyList(),
                     savedCount = 0,
                     dumpModeEnabled = payload.dumpModeEnabled
                 )
             } else {
                 _state.value = HookConfigState(
-                    rvaInputs = RvaUtils.formatInputs(payload.rvas),
-                    savedCount = payload.rvas.size,
+                    methodInputs = HookTargetUtils.formatInputs(payload.targets),
+                    savedCount = payload.targets.size,
                     dumpModeEnabled = payload.dumpModeEnabled
                 )
             }
@@ -65,70 +65,7 @@ class HookConfigViewModel(
     }
 
     /**
-     * Updates a single RVA input row in the state.
-     */
-    fun onRvaChanged(index: Int, value: String) {
-        val updated = _state.value.rvaInputs.toMutableList()
-        if (index in updated.indices) {
-            updated[index] = value
-            _state.value = _state.value.copy(rvaInputs = updated)
-        }
-    }
-
-    /**
-     * Adds a new blank RVA row.
-     */
-    fun onAddRva() {
-        val current = _state.value.rvaInputs
-        _state.value = _state.value.copy(rvaInputs = current + "")
-    }
-
-    /**
-     * Removes the specified RVA row when multiple rows exist.
-     */
-    fun onRemoveRva(index: Int) {
-        val current = _state.value.rvaInputs
-        if (current.size <= 1 || index !in current.indices) return
-        val updated = current.toMutableList()
-        updated.removeAt(index)
-        _state.value = _state.value.copy(rvaInputs = updated)
-    }
-
-    /**
-     * Restores to a blank RVA row without persisting, allowing users to re-enter from scratch.
-     */
-    fun onRestoreDefault(context: Context) {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(
-                rvaInputs = listOf(""),
-                savedCount = 0
-            )
-            _events.send(HookConfigEvent.ShowMessage("已恢复默认为空，请重新填写后保存"))
-        }
-    }
-
-    /**
-     * Saves cleaned RVA entries; rejects empty input with a message.
-     */
-    fun onSave(context: Context) {
-        viewModelScope.launch {
-            val cleaned = RvaUtils.normalizeInputs(_state.value.rvaInputs)
-            if (cleaned.isEmpty()) {
-                _events.send(HookConfigEvent.ShowMessage("至少填入一个有效的 RVA"))
-                return@launch
-            }
-            repository.saveRvas(context, cleaned)
-            val formatted = RvaUtils.formatInputs(cleaned)
-            _state.value = _state.value.copy(
-                rvaInputs = formatted,
-                savedCount = cleaned.size
-            )
-            _events.send(HookConfigEvent.ShowMessage("已保存 ${cleaned.size} 个 RVA"))
-        }
-    }
-
-    /**
-     * Triggers a file parse flow to import RVAs from a dump file.
+     * Triggers a file parse flow to import methods from a dump file.
      */
     fun onFilePicked(context: Context, uri: Uri?) {
         if (uri == null) {
@@ -138,12 +75,18 @@ class HookConfigViewModel(
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
             try {
-                val result = dumpFileParser.extractRvas(context, uri, Int.MAX_VALUE)
-                if (result.addresses.isNotEmpty()) {
-                    _state.value = _state.value.copy(rvaInputs = result.addresses)
-                    _events.send(HookConfigEvent.ShowMessage("解析到 ${result.addresses.size} 条 RVA"))
+                val result = dumpFileParser.extractTargets(context, uri, Int.MAX_VALUE)
+                val methods = HookTargetUtils.normalizeInputs(result.entries.map { it.functionName })
+                if (methods.isNotEmpty()) {
+                    repository.saveTargets(context, methods)
+                    val formatted = HookTargetUtils.formatInputs(methods)
+                    _state.value = _state.value.copy(
+                        methodInputs = formatted,
+                        savedCount = methods.size
+                    )
+                    _events.send(HookConfigEvent.ShowMessage("解析并保存 ${methods.size} 个 set_text 方法"))
                 } else {
-                    _events.send(HookConfigEvent.ShowMessage("未在文件中找到 set_Text 的 RVA"))
+                    _events.send(HookConfigEvent.ShowMessage("未在文件中找到 set_text 方法"))
                 }
                 if (result.savedJsonPath != null) {
                     withContext(Dispatchers.Main) {
@@ -153,14 +96,32 @@ class HookConfigViewModel(
                             Toast.LENGTH_SHORT
                         ).show()
                     }
-                } else {
-                    if (result.addresses.isNotEmpty()) {
-                        _events.send(HookConfigEvent.ShowMessage("JSON 保存失败，已解析 RVA"))
-                    }
+                } else if (methods.isNotEmpty()) {
+                    _events.send(HookConfigEvent.ShowMessage("JSON 保存失败，已解析方法"))
                 }
             } finally {
                 _state.value = _state.value.copy(isLoading = false)
             }
+        }
+    }
+
+    /**
+     * Manually persists the current method list to storage (for already解析的数据).
+     */
+    fun onSave(context: Context) {
+        viewModelScope.launch {
+            val cleaned = HookTargetUtils.normalizeInputs(_state.value.methodInputs)
+            if (cleaned.isEmpty()) {
+                _events.send(HookConfigEvent.ShowMessage("请先解析 dump.cs 获取方法列表"))
+                return@launch
+            }
+            repository.saveTargets(context, cleaned)
+            val formatted = HookTargetUtils.formatInputs(cleaned)
+            _state.value = _state.value.copy(
+                methodInputs = formatted,
+                savedCount = cleaned.size
+            )
+            _events.send(HookConfigEvent.ShowMessage("已保存 ${cleaned.size} 个方法"))
         }
     }
 }
@@ -169,7 +130,7 @@ class HookConfigViewModel(
  * Immutable UI state container for the hook configuration screen.
  */
 data class HookConfigState(
-    val rvaInputs: List<String> = emptyList(),
+    val methodInputs: List<String> = emptyList(),
     val dumpModeEnabled: Boolean = false,
     val savedCount: Int = 0,
     val isLoading: Boolean = false
