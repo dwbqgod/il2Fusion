@@ -7,10 +7,13 @@
 #include <cstring>
 #include <dlfcn.h>
 #include <elf.h>
+#include <thread>
 #include <unistd.h>
 #include <thread>
 #include <vector>
 
+#include "../il2CppDumper/il2cpp-class.h"
+#include "../il2CppDumper/xdl/include/xdl.h"
 #include "dobby.h"
 #include "log.h"
 
@@ -327,6 +330,136 @@ void SetSecondArg(DobbyRegisterContext* ctx, void* value) {
 }
 
 }  // namespace hookutils
+
+namespace il2cpputils {
+
+bool ParseTarget(const std::string& full, TargetSpec& out) {
+    const auto start = full.find_first_not_of(" \t\r\n");
+    const auto end = full.find_last_not_of(" \t\r\n");
+    if (start == std::string::npos || end == std::string::npos) {
+        return false;
+    }
+    const std::string cleaned = full.substr(start, end - start + 1);
+
+    auto last_dot = cleaned.rfind('.');
+    if (last_dot == std::string::npos || last_dot + 1 >= cleaned.size()) {
+        return false;
+    }
+    const std::string method = cleaned.substr(last_dot + 1);
+    const std::string class_and_ns = cleaned.substr(0, last_dot);
+    auto second_last = class_and_ns.rfind('.');
+    std::string ns;
+    std::string klass;
+    if (second_last == std::string::npos) {
+        klass = class_and_ns;
+    } else {
+        ns = class_and_ns.substr(0, second_last);
+        klass = class_and_ns.substr(second_last + 1);
+    }
+    if (klass.empty() || method.empty()) {
+        return false;
+    }
+    out.full = cleaned;
+    out.namespaze = ns;
+    out.klass = klass;
+    out.method = method;
+    return true;
+}
+
+bool ResolveIl2cppApi(void* handle, Il2CppApi& api) {
+    auto resolve = [&](auto& fn, const char* name) {
+        fn = reinterpret_cast<std::remove_reference_t<decltype(fn)>>(xdl_sym(handle, name, nullptr));
+        if (fn == nullptr) {
+            fn = reinterpret_cast<std::remove_reference_t<decltype(fn)>>(dlsym(handle, name));
+        }
+        return fn != nullptr;
+    };
+
+    bool ok = true;
+    ok &= resolve(api.domain_get, "il2cpp_domain_get");
+    ok &= resolve(api.domain_get_assemblies, "il2cpp_domain_get_assemblies");
+    ok &= resolve(api.assembly_get_image, "il2cpp_assembly_get_image");
+    ok &= resolve(api.class_from_name, "il2cpp_class_from_name");
+    ok &= resolve(api.class_get_methods, "il2cpp_class_get_methods");
+    ok &= resolve(api.class_get_method_from_name, "il2cpp_class_get_method_from_name");
+    ok &= resolve(api.method_get_name, "il2cpp_method_get_name");
+    resolve(api.thread_attach, "il2cpp_thread_attach");
+    resolve(api.is_vm_thread, "il2cpp_is_vm_thread");
+
+    if (!ok) {
+        LOGE("初始化 il2cpp API 失败，部分符号缺失");
+    }
+    return ok;
+}
+
+bool EnsureVmReadyAndAttach(const Il2CppApi& api, int max_retry, std::chrono::milliseconds interval) {
+    if (api.is_vm_thread) {
+        int retry = 0;
+        while (!api.is_vm_thread(nullptr) && retry < max_retry) {
+            std::this_thread::sleep_for(interval);
+            ++retry;
+        }
+        if (!api.is_vm_thread(nullptr)) {
+            LOGE("il2cpp VM 未就绪");
+            return false;
+        }
+    }
+    if (api.thread_attach && api.domain_get) {
+        Il2CppDomain* domain = api.domain_get();
+        if (domain != nullptr) {
+            api.thread_attach(domain);
+        }
+    }
+    return true;
+}
+
+const MethodInfo* FindMethodInAssemblies(const Il2CppApi& api, const TargetSpec& spec) {
+    if (!api.domain_get || !api.domain_get_assemblies || !api.assembly_get_image || !api.class_from_name) {
+        LOGE("Il2Cpp API 未准备好，跳过解析 %s", spec.full.c_str());
+        return nullptr;
+    }
+
+    Il2CppDomain* domain = api.domain_get();
+    if (domain == nullptr) {
+        return nullptr;
+    }
+
+    size_t count = 0;
+    const Il2CppAssembly** assemblies = api.domain_get_assemblies(domain, &count);
+    for (size_t i = 0; i < count; ++i) {
+        const Il2CppImage* image = api.assembly_get_image(assemblies[i]);
+        if (image == nullptr) {
+            continue;
+        }
+        Il2CppClass* klass = api.class_from_name(image, spec.namespaze.c_str(), spec.klass.c_str());
+        if (klass == nullptr) {
+            continue;
+        }
+
+        const MethodInfo* method = nullptr;
+        if (api.class_get_method_from_name) {
+            method = api.class_get_method_from_name(klass, spec.method.c_str(), 1);
+            if (method == nullptr) {
+                method = api.class_get_method_from_name(klass, spec.method.c_str(), 0);
+            }
+        }
+        if (method == nullptr && api.class_get_methods && api.method_get_name) {
+            void* iter = nullptr;
+            while ((method = api.class_get_methods(klass, &iter)) != nullptr) {
+                const char* name = api.method_get_name(method);
+                if (name != nullptr && spec.method == name) {
+                    break;
+                }
+            }
+        }
+        if (method != nullptr && method->methodPointer != nullptr) {
+            return method;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace il2cpputils
 
 extern "C" {
 
