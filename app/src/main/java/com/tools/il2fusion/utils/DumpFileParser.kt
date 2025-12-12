@@ -52,6 +52,7 @@ class DumpFileParser {
         output: MutableList<TargetEntry>
     ) {
         val setTextPattern = Utils.setTextPattern
+        val setTextStrictPattern = Utils.setTextStrictSignaturePattern
         val rvaPattern = Utils.rvaPattern
         val classPattern = Utils.classDeclPattern
         var currentNamespace = ""
@@ -68,7 +69,9 @@ class DumpFileParser {
             }
 
             val next = lines[i + 1]
+            if (currentNamespace.startsWith("System")) continue
             if (!setTextPattern.containsMatchIn(next)) continue
+            if (!setTextStrictPattern.containsMatchIn(next)) continue
             val match = rvaPattern.find(line) ?: continue
             val raw = match.groupValues.getOrNull(1) ?: continue
             val parsed = RvaUtils.parseRva(raw) ?: continue
@@ -82,7 +85,7 @@ class DumpFileParser {
     }
 
     private fun extractMethodName(line: String): String? {
-        return Utils.setterMethodPattern.find(line)?.groupValues?.getOrNull(1)
+        return Regex("""\b(set_text|set_Text)\b""").find(line)?.groupValues?.getOrNull(1)
     }
 
     private fun buildFunctionName(namespace: String, klass: String, method: String): String {

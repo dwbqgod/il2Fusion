@@ -11,6 +11,11 @@ object Utils {
     val rvaPattern: Regex = Regex("""RVA:\s*(0x[0-9a-fA-F]+|\d+)""")
     val classDeclPattern: Regex = Regex("""\b(class|struct|interface|enum)\s+([A-Za-z0-9_`]+)""")
     val setterMethodPattern: Regex = Regex("""\b(set_[A-Za-z0-9_]+)\s*\(""", RegexOption.IGNORE_CASE)
+    // Strict signature: public [modifiers] Void set_text|set_Text(String value) with exactly one String param, no virtual.
+    val setTextStrictSignaturePattern: Regex = Regex(
+        """^\s*public\b(?!.*\bvirtual\b).*?\bVoid\s+(set_text|set_Text)\s*\(\s*(?<!\.)String\s+\w+\s*\)\s*\{?""",
+        setOf(RegexOption.MULTILINE)
+    )
 
     fun resolveDisplayName(context: Context, uri: Uri): String? {
         return try {
