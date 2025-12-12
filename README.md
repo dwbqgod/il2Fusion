@@ -17,9 +17,10 @@ English version: see [README_EN](https://github.com/PenguinAndy/il2Fusion/blob/m
 
 ## 功能特性
 - Dump 模式优先：一键触发 Il2CppDumper 生成 `dump.cs`，自动尝试复制到 `/sdcard/Download/<pkg>.cs` 并 Toast 结果；通过 LSPosed+Provider 配置，缓解原版 Zygisk-Il2CppDumper 在配置同步和产物获取上的痛点。
-- 文本拦截：在 `libil2cpp.so` 中按方法签名（如 `FairyGUI.InputTextField.set_text`）安装 hook，记录传入的 `set_text` 字符串到本地数据库，作为“民间汉化”尝试性的工具能力，欢迎扩展更多玩法。
+- 文本拦截：在 `libil2cpp.so` 中按方法签名（如 `TextMesh.set_text`）安装 hook，记录传入的 `set_text` 字符串到本地数据库，作为“民间汉化”尝试性的工具能力，欢迎扩展更多玩法。
 - 配置同步：插件 App 写入 `ContentProvider (com.tools.il2fusion.provider/config)`，注入进程读取后下发到 native。
 - 文件解析：可从 `.cs` dump 文件自动解析 `set_text` 上方的方法全名，并生成 JSON 供导入。
+- 游戏插件功能：同文本拦截，可以制作插件脱离游戏使用，而不需要对游戏解包回编译。
 
 ## 环境要求
 - 已 Root 的设备，Magisk + LSPosed 环境。
@@ -27,8 +28,7 @@ English version: see [README_EN](https://github.com/PenguinAndy/il2Fusion/blob/m
 - 默认 ABI：`arm64-v8a`（如需其他 ABI，请补齐 `app/src/main/cpp/libs/<abi>/libdobby.a` 并调整 `ndk.abiFilters`）。
 - 已验证设备：
   - Google Pixel 3 XL，Android 12（SP1A.210812.016.C2 / 8618562）。
-  - MacOS 端 MuMu Android 12 模拟器
-  - Windows 端 MuMu Android 12 模拟器 Dump 正常
+  - MacOS、Windows 端 MuMu Android 12 模拟器
 
 ## 快速开始
 1) 构建模块：`./gradlew :app:assembleDebug`（包含 CMake，生成 `libnative_hook.so`）。  
